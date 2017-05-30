@@ -23,7 +23,7 @@
 # CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
 # SOFTWARE.
 
-from electrum.i18n import _
+from electrum_ltc.i18n import _
 
 import PyQt4
 from PyQt4.QtGui import *
@@ -59,6 +59,7 @@ class AddressDialog(WindowModalDialog):
         self.hw.get_domain = self.get_domain
         vbox.addWidget(self.hw)
 
+        vbox.addStretch(1)
         vbox.addLayout(Buttons(CloseButton(self)))
         self.format_amount = self.parent.format_amount
         self.hw.update()

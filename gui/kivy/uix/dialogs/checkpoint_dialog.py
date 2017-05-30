@@ -3,10 +3,10 @@ from kivy.factory import Factory
 from kivy.properties import ObjectProperty
 from kivy.lang import Builder
 
-from electrum.i18n import _
+from electrum_ltc.i18n import _
 
 Builder.load_string('''
-#:import _ electrum_gui.kivy.i18n._
+#:import _ electrum_ltc_gui.kivy.i18n._
 
 <CheckpointDialog@Popup>
     id: popup

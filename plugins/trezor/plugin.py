@@ -5,14 +5,14 @@ import threading
 from binascii import hexlify, unhexlify
 from functools import partial
 
-from electrum.bitcoin import (bc_address_to_hash_160, xpub_from_pubkey,
+from electrum_ltc.bitcoin import (bc_address_to_hash_160, xpub_from_pubkey,
                               public_key_to_p2pkh, EncodeBase58Check,
                               TYPE_ADDRESS, TYPE_SCRIPT,
-                              TESTNET, ADDRTYPE_P2PKH, ADDRTYPE_P2SH)
-from electrum.i18n import _
-from electrum.plugins import BasePlugin, hook
-from electrum.transaction import deserialize, Transaction
-from electrum.keystore import Hardware_KeyStore, is_xpubkey, parse_xpubkey
+                              TESTNET, ADDRTYPE_P2PKH, ADDRTYPE_P2SH, ADDRTYPE_P2SH_ALT)
+from electrum_ltc.i18n import _
+from electrum_ltc.plugins import BasePlugin, hook
+from electrum_ltc.transaction import deserialize, Transaction
+from electrum_ltc.keystore import Hardware_KeyStore, is_xpubkey, parse_xpubkey
 
 from ..hw_wallet import HW_PluginBase
 
@@ -42,7 +42,7 @@ class TrezorCompatibleKeyStore(Hardware_KeyStore):
         client = self.get_client()
         address_path = self.get_derivation() + "/%d/%d"%sequence
         address_n = client.expand_path(address_path)
-        msg_sig = client.sign_message(self.plugin.get_coin_name(), address_n, message)
+        msg_sig = client.sign_message(self.get_coin_name(), address_n, message)
         return msg_sig.signature
 
     def sign_transaction(self, tx, password):
@@ -145,7 +145,10 @@ class TrezorCompatiblePlugin(HW_PluginBase):
         return client
 
     def get_coin_name(self):
-        return "Testnet" if TESTNET else "Bitcoin"
+        if TESTNET:
+            return "Testnet"
+        else:
+            return "Litecoin"
 
     def initialize_device(self, device_id, wizard, handler):
         # Initialization method
@@ -330,7 +333,7 @@ class TrezorCompatiblePlugin(HW_PluginBase):
                         script_type = self.types.PAYTOADDRESS,
                         address_n = address_n,
                     )
-                elif addrtype == ADDRTYPE_P2SH:
+                elif addrtype in [ADDRTYPE_P2SH, ADDRTYPE_P2SH_ALT]:
                     address_n = self.client_class.expand_path("/%d/%d"%index)
                     nodes = map(self.ckd_public.deserialize, xpubs)
                     pubkeys = [ self.types.HDNodePathType(node=node, address_n=address_n) for node in nodes]
@@ -352,7 +355,7 @@ class TrezorCompatiblePlugin(HW_PluginBase):
                     addrtype, hash_160 = bc_address_to_hash_160(address)
                     if addrtype == ADDRTYPE_P2PKH:
                         txoutputtype.script_type = self.types.PAYTOADDRESS
-                    elif addrtype == ADDRTYPE_P2SH:
+                    elif addrtype in [ADDRTYPE_P2SH, ADDRTYPE_P2SH_ALT]:
                         txoutputtype.script_type = self.types.PAYTOSCRIPTHASH
                     else:
                         raise BaseException('addrtype')

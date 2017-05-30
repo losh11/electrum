@@ -30,7 +30,13 @@ import util
 import bitcoin
 from bitcoin import *
 
-MAX_TARGET = 0x00000000FFFF0000000000000000000000000000000000000000000000000000
+try:
+    from ltc_scrypt import getPoWHash
+except ImportError:
+    util.print_msg("Warning: ltc_scrypt not available, using fallback")
+    from scrypt import scrypt_1024_1_1_80 as getPoWHash
+
+MAX_TARGET = 0x00000FFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF
 
 class Blockchain(util.PrintError):
     '''Manages blockchain headers and their verification'''
@@ -70,6 +76,7 @@ class Blockchain(util.PrintError):
     def verify_header(self, header, prev_header, bits, target):
         prev_hash = self.hash_header(prev_header)
         _hash = self.hash_header(header)
+        _powhash = self.pow_hash_header(header)
         if prev_hash != header.get('prev_block_hash'):
             raise BaseException("prev hash mismatch: %s vs %s" % (prev_hash, header.get('prev_block_hash')))
         if not self.pass_checkpoint(header):
@@ -80,8 +87,8 @@ class Blockchain(util.PrintError):
             return
         if bits != header.get('bits'):
             raise BaseException("bits mismatch: %s vs %s" % (bits, header.get('bits')))
-        if int('0x' + _hash, 16) > target:
-            raise BaseException("insufficient proof of work: %s vs target %s" % (int('0x' + _hash, 16), target))
+        if int('0x' + _powhash, 16) > target:
+            raise BaseException("insufficient proof of work: %s vs target %s" % (int('0x' + _powhash, 16), target))
 
     def verify_chain(self, chain):
         first_header = chain[0]
@@ -129,6 +136,9 @@ class Blockchain(util.PrintError):
         if header is None:
             return '0' * 64
         return hash_encode(Hash(self.serialize_header(header).decode('hex')))
+
+    def pow_hash_header(self, header):
+        return rev_hex(getPoWHash(self.serialize_header(header).decode('hex')).encode('hex'))
 
     def path(self):
         return util.get_headers_path(self.config)
@@ -191,7 +201,7 @@ class Blockchain(util.PrintError):
         v = self.read_header(height)['version']
         return ((v & 0xE0000000) == 0x20000000) and ((v & flag) == flag)
 
-    def segwit_support(self, N=144):
+    def segwit_support(self, N=576):
         h = self.local_height
         return sum([self.BIP9(h-i, 2) for i in range(N)])*10000/N/100.
 
@@ -202,13 +212,10 @@ class Blockchain(util.PrintError):
         if self.hash_header(checkpoint) == self.checkpoint_hash:
             return
         self.print_error('checkpoint mismatch:', self.hash_header(checkpoint), self.checkpoint_hash)
-        self.truncate_headers(self.checkpoint_height)
-
-    def truncate_headers(self, height):
-        self.print_error('Truncating headers file at height %d'%height)
+        self.print_error('Truncating headers file at height %d'%self.checkpoint_height)
         name = self.path()
         f = open(name, 'rb+')
-        f.seek(height * 80)
+        f.seek(self.checkpoint_height * 80)
         f.truncate()
         f.close()
 
@@ -216,8 +223,9 @@ class Blockchain(util.PrintError):
         if bitcoin.TESTNET:
             return 0, 0
         if index == 0:
-            return 0x1d00ffff, MAX_TARGET
-        first = self.read_header((index-1) * 2016)
+            return 0x1e0ffff0, 0x00000FFFF0000000000000000000000000000000000000000000000000000000
+        # Litecoin: go back the full period unless it's the first retarget
+        first = self.read_header((index-1) * 2016 - 1 if index > 1 else 0)
         last = self.read_header(index*2016 - 1)
         if last is None:
             for h in chain:
@@ -227,15 +235,15 @@ class Blockchain(util.PrintError):
         # bits to target
         bits = last.get('bits')
         bitsN = (bits >> 24) & 0xff
-        if not (bitsN >= 0x03 and bitsN <= 0x1d):
-            raise BaseException("First part of bits should be in [0x03, 0x1d]")
+        if not (bitsN >= 0x03 and bitsN <= 0x1e):
+            raise BaseException("First part of bits should be in [0x03, 0x1e]")
         bitsBase = bits & 0xffffff
         if not (bitsBase >= 0x8000 and bitsBase <= 0x7fffff):
             raise BaseException("Second part of bits should be in [0x8000, 0x7fffff]")
         target = bitsBase << (8 * (bitsN-3))
         # new target
         nActualTimespan = last.get('timestamp') - first.get('timestamp')
-        nTargetTimespan = 14 * 24 * 60 * 60
+        nTargetTimespan = 84 * 60 * 60
         nActualTimespan = max(nActualTimespan, nTargetTimespan / 4)
         nActualTimespan = min(nActualTimespan, nTargetTimespan * 4)
         new_target = min(MAX_TARGET, (target*nActualTimespan) / nTargetTimespan)
@@ -250,21 +258,35 @@ class Blockchain(util.PrintError):
         new_bits = bitsN << 24 | bitsBase
         return new_bits, bitsBase << (8 * (bitsN-3))
 
-    def can_connect(self, header):
+    def connect_header(self, chain, header):
+        '''Builds a header chain until it connects.  Returns True if it has
+        successfully connected, False if verification failed, otherwise the
+        height of the next header needed.'''
+        chain.append(header)  # Ordered by decreasing height
         previous_height = header['block_height'] - 1
         previous_header = self.read_header(previous_height)
+
+        # Missing header, request it
         if not previous_header:
-            return False
+            return previous_height
+
+        # Does it connect to my chain?
         prev_hash = self.hash_header(previous_header)
         if prev_hash != header.get('prev_block_hash'):
-            return False
-        height = header.get('block_height')
-        bits, target = self.get_target(height / 2016)
+            self.print_error("reorg")
+            return previous_height
+
+        # The chain is complete.  Reverse to order by increasing height
+        chain.reverse()
         try:
-            self.verify_header(header, previous_header, bits, target)
-        except:
+            self.verify_chain(chain)
+            self.print_error("new height:", previous_height + len(chain))
+            for header in chain:
+                self.save_header(header)
+            return True
+        except BaseException as e:
+            self.print_error(str(e))
             return False
-        return True
 
     def connect_chunk(self, idx, hexdata):
         try:
@@ -272,10 +294,10 @@ class Blockchain(util.PrintError):
             self.verify_chunk(idx, data)
             self.print_error("validated chunk %d" % idx)
             self.save_chunk(idx, data)
-            return True
+            return idx + 1
         except BaseException as e:
             self.print_error('verify_chunk failed', str(e))
-            return False
+            return idx - 1
 
     def get_checkpoint(self):
         height = self.config.get('checkpoint_height', 0)

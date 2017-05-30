@@ -7,15 +7,15 @@ import traceback
 from decimal import Decimal
 import threading
 
-import electrum
-from electrum.bitcoin import TYPE_ADDRESS
-from electrum import WalletStorage, Wallet
-from electrum_gui.kivy.i18n import _
-from electrum.paymentrequest import InvoiceStore
-from electrum.util import profiler, InvalidPassword
-from electrum.plugins import run_hook
-from electrum.util import format_satoshis, format_satoshis_plain
-from electrum.paymentrequest import PR_UNPAID, PR_PAID, PR_UNKNOWN, PR_EXPIRED
+import electrum_ltc as electrum
+from electrum_ltc.bitcoin import TYPE_ADDRESS
+from electrum_ltc import WalletStorage, Wallet
+from electrum_ltc_gui.kivy.i18n import _
+from electrum_ltc.paymentrequest import InvoiceStore
+from electrum_ltc.util import profiler, InvalidPassword
+from electrum_ltc.plugins import run_hook
+from electrum_ltc.util import format_satoshis, format_satoshis_plain
+from electrum_ltc.paymentrequest import PR_UNPAID, PR_PAID, PR_UNKNOWN, PR_EXPIRED
 
 from kivy.app import App
 from kivy.core.window import Window
@@ -31,10 +31,10 @@ from kivy.lang import Builder
 
 # lazy imports for factory so that widgets can be used in kv
 Factory.register('InstallWizard',
-                 module='electrum_gui.kivy.uix.dialogs.installwizard')
-Factory.register('InfoBubble', module='electrum_gui.kivy.uix.dialogs')
-Factory.register('OutputList', module='electrum_gui.kivy.uix.dialogs')
-Factory.register('OutputItem', module='electrum_gui.kivy.uix.dialogs')
+                 module='electrum_ltc_gui.kivy.uix.dialogs.installwizard')
+Factory.register('InfoBubble', module='electrum_ltc_gui.kivy.uix.dialogs')
+Factory.register('OutputList', module='electrum_ltc_gui.kivy.uix.dialogs')
+Factory.register('OutputItem', module='electrum_ltc_gui.kivy.uix.dialogs')
 
 
 #from kivy.core.window import Window
@@ -48,14 +48,14 @@ util = False
 
 # register widget cache for keeping memory down timeout to forever to cache
 # the data
-Cache.register('electrum_widgets', timeout=0)
+Cache.register('electrum_ltc_widgets', timeout=0)
 
 from kivy.uix.screenmanager import Screen
 from kivy.uix.tabbedpanel import TabbedPanel
 from kivy.uix.label import Label
 from kivy.core.clipboard import Clipboard
 
-Factory.register('TabbedCarousel', module='electrum_gui.kivy.uix.screens')
+Factory.register('TabbedCarousel', module='electrum_ltc_gui.kivy.uix.screens')
 
 # Register fonts without this you won't be able to use bold/italic...
 # inside markup.
@@ -67,7 +67,7 @@ Label.register('Roboto',
                'gui/kivy/data/fonts/Roboto-Bold.ttf')
 
 
-from electrum.util import base_units
+from electrum_ltc.util import base_units
 
 
 class ElectrumWindow(App):
@@ -83,7 +83,7 @@ class ElectrumWindow(App):
         self.send_screen.set_URI(uri)
 
     def on_new_intent(self, intent):
-        if intent.getScheme() != 'bitcoin':
+        if intent.getScheme() != 'litecoin':
             return
         uri = intent.getDataString()
         self.set_URI(uri)
@@ -105,7 +105,7 @@ class ElectrumWindow(App):
         self._trigger_update_history()
 
     def _get_bu(self):
-        return self.electrum_config.get('base_unit', 'mBTC')
+        return self.electrum_config.get('base_unit', 'LTC')
 
     def _set_bu(self, value):
         assert value in base_units.keys()
@@ -192,7 +192,7 @@ class ElectrumWindow(App):
 
         super(ElectrumWindow, self).__init__(**kwargs)
 
-        title = _('Electrum App')
+        title = _('Electrum-LTC App')
         self.electrum_config = config = kwargs.get('config', None)
         self.language = config.get('language', 'en')
         self.network = network = kwargs.get('network', None)
@@ -233,16 +233,16 @@ class ElectrumWindow(App):
             self.send_screen.do_clear()
 
     def on_qr(self, data):
-        from electrum.bitcoin import base_decode, is_address
+        from electrum_ltc.bitcoin import base_decode, is_address
         data = data.strip()
         if is_address(data):
             self.set_URI(data)
             return
-        if data.startswith('bitcoin:'):
+        if data.startswith('litecoin:'):
             self.set_URI(data)
             return
         # try to decode transaction
-        from electrum.transaction import Transaction
+        from electrum_ltc.transaction import Transaction
         try:
             text = base_decode(data, None, base=43).encode('hex')
             tx = Transaction(text)
@@ -279,7 +279,7 @@ class ElectrumWindow(App):
         self.receive_screen.screen.address = addr
 
     def show_pr_details(self, req, status, is_invoice):
-        from electrum.util import format_time
+        from electrum_ltc.util import format_time
         requestor = req.get('requestor')
         exp = req.get('exp')
         memo = req.get('memo')
@@ -505,13 +505,13 @@ class ElectrumWindow(App):
 
         #setup lazy imports for mainscreen
         Factory.register('AnimatedPopup',
-                         module='electrum_gui.kivy.uix.dialogs')
+                         module='electrum_ltc_gui.kivy.uix.dialogs')
         Factory.register('QRCodeWidget',
-                         module='electrum_gui.kivy.uix.qrcodewidget')
+                         module='electrum_ltc_gui.kivy.uix.qrcodewidget')
 
         # preload widgets. Remove this if you want to load the widgets on demand
-        #Cache.append('electrum_widgets', 'AnimatedPopup', Factory.AnimatedPopup())
-        #Cache.append('electrum_widgets', 'QRCodeWidget', Factory.QRCodeWidget())
+        #Cache.append('electrum_ltc_widgets', 'AnimatedPopup', Factory.AnimatedPopup())
+        #Cache.append('electrum_ltc_widgets', 'QRCodeWidget', Factory.QRCodeWidget())
 
         # load and focus the ui
         self.root.manager = self.root.ids['manager']
@@ -523,7 +523,7 @@ class ElectrumWindow(App):
         self.receive_screen = None
         self.requests_screen = None
 
-        self.icon = "icons/electrum.png"
+        self.icon = "icons/electrum-ltc.png"
 
         # connect callbacks
         if self.network:
@@ -604,8 +604,8 @@ class ElectrumWindow(App):
                 from plyer import notification
             icon = (os.path.dirname(os.path.realpath(__file__))
                     + '/../../' + self.icon)
-            notification.notify('Electrum', message,
-                            app_icon=icon, app_name='Electrum')
+            notification.notify('Electrum-LTC', message,
+                            app_icon=icon, app_name='Electrum-LTC')
         except ImportError:
             Logger.Error('Notification: needs plyer; `sudo pip install plyer`')
 

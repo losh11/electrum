@@ -471,7 +471,7 @@ def get_scriptPubKey(addr):
         script = '76a9'                                      # op_dup, op_hash_160
         script += push_script(hash_160.encode('hex'))
         script += '88ac'                                     # op_equalverify, op_checksig
-    elif addrtype == bitcoin.ADDRTYPE_P2SH:
+    elif addrtype in [bitcoin.ADDRTYPE_P2SH, bitcoin.ADDRTYPE_P2SH_ALT]:
         script = 'a9'                                        # op_hash_160
         script += push_script(hash_160.encode('hex'))
         script += '87'                                       # op_equal
@@ -686,11 +686,11 @@ class Transaction:
         # Script length, script, sequence
         s += var_int(len(script)/2)
         s += script
-        s += int_to_hex(txin.get('sequence', 0xffffffff - 1), 4)
+        s += int_to_hex(txin.get('sequence', 0xffffffff), 4)
         return s
 
     def set_rbf(self, rbf):
-        nSequence = 0xffffffff - (2 if rbf else 1)
+        nSequence = 0xffffffff - (2 if rbf else 0)
         for txin in self.inputs():
             txin['sequence'] = nSequence
 
@@ -716,12 +716,12 @@ class Transaction:
         txin = inputs[i]
         if self.is_segwit_input(txin):
             hashPrevouts = Hash(''.join(self.serialize_outpoint(txin) for txin in inputs).decode('hex')).encode('hex')
-            hashSequence = Hash(''.join(int_to_hex(txin.get('sequence', 0xffffffff - 1), 4) for txin in inputs).decode('hex')).encode('hex')
+            hashSequence = Hash(''.join(int_to_hex(txin.get('sequence', 0xffffffff), 4) for txin in inputs).decode('hex')).encode('hex')
             hashOutputs = Hash(''.join(self.serialize_output(o) for o in outputs).decode('hex')).encode('hex')
             outpoint = self.serialize_outpoint(txin)
             scriptCode = push_script(self.get_preimage_script(txin))
             amount = int_to_hex(txin['value'], 8)
-            nSequence = int_to_hex(txin.get('sequence', 0xffffffff - 1), 4)
+            nSequence = int_to_hex(txin.get('sequence', 0xffffffff), 4)
             preimage = nVersion + hashPrevouts + hashSequence + outpoint + scriptCode + amount + nSequence + hashOutputs + nLocktime + nHashType
         else:
             txins = var_int(len(inputs)) + ''.join(self.serialize_input(txin, self.get_preimage_script(txin) if i==k else '') for k, txin in enumerate(inputs))
@@ -780,7 +780,7 @@ class Transaction:
         return self.input_value() - self.output_value()
 
     def is_final(self):
-        return not any([x.get('sequence', 0xffffffff - 1) < 0xffffffff - 1 for x in self.inputs()])
+        return not any([x.get('sequence', 0xffffffff) < 0xffffffff - 1 for x in self.inputs()])
 
     @profiler
     def estimated_size(self):
@@ -867,19 +867,14 @@ class Transaction:
         return out
 
 
-    def requires_fee(self, wallet):
+    def required_fee(self, wallet):
         # see https://en.bitcoin.it/wiki/Transaction_fees
-        #
-        # size must be smaller than 1 kbyte for free tx
         size = len(self.serialize(-1))/2
-        if size >= 10000:
-            return True
-        # all outputs must be 0.01 BTC or larger for free tx
+        fee = 0
         for addr, value in self.get_outputs():
-            if value < 1000000:
-                return True
-        # priority must be large enough for free tx
-        threshold = 57600000
+            if value < DUST_SOFT_LIMIT:
+                fee += DUST_SOFT_LIMIT
+        threshold = 57600000*4
         weight = 0
         for txin in self.inputs():
             height, conf, timestamp = wallet.get_tx_height(txin["prevout_hash"])
@@ -887,7 +882,11 @@ class Transaction:
         priority = weight / size
         print_error(priority, threshold)
 
-        return priority < threshold
+        if size < 5000 and fee == 0 and priority > threshold:
+            return 0
+        fee += (1 + size / 1000) * MIN_RELAY_TX_FEE
+        print_error(fee)
+        return fee
 
 
 

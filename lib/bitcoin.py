@@ -36,30 +36,36 @@ from util import print_error, InvalidPassword
 import ecdsa
 import pyaes
 
-# Bitcoin network constants
+# Litecoin network constants
 TESTNET = False
 NOLNET = False
-ADDRTYPE_P2PKH = 0
-ADDRTYPE_P2SH = 5
+ADDRTYPE_P2PKH = 48
+ADDRTYPE_P2SH = 50
+ADDRTYPE_P2SH_ALT = 5
 ADDRTYPE_P2WPKH = 6
 XPRV_HEADER = 0x0488ade4
 XPUB_HEADER = 0x0488b21e
-HEADERS_URL = "https://headers.electrum.org/blockchain_headers"
-GENESIS = "000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f"
+XPRV_HEADER_ALT = 0x019d9cfe
+XPUB_HEADER_ALT = 0x019da462
+HEADERS_URL = "https://electrum-ltc.org/blockchain_headers"
+GENESIS = "12a765e31ffd4059bada1e25190f6e98c99d9714d334efa41a195a7e7e04bfe2"
 
 def set_testnet():
-    global ADDRTYPE_P2PKH, ADDRTYPE_P2SH, ADDRTYPE_P2WPKH
-    global XPRV_HEADER, XPUB_HEADER
+    global ADDRTYPE_P2PKH, ADDRTYPE_P2SH, ADDRTYPE_P2SH_ALT, ADDRTYPE_P2WPKH
+    global XPRV_HEADER, XPUB_HEADER, XPRV_HEADER_ALT, XPUB_HEADER_ALT
     global TESTNET, HEADERS_URL
     global GENESIS
     TESTNET = True
     ADDRTYPE_P2PKH = 111
-    ADDRTYPE_P2SH = 196
+    ADDRTYPE_P2SH = 58
+    ADDRTYPE_P2SH_ALT = 196
     ADDRTYPE_P2WPKH = 3
     XPRV_HEADER = 0x04358394
     XPUB_HEADER = 0x043587cf
-    HEADERS_URL = "https://headers.electrum.org/testnet_headers"
-    GENESIS = "000000000933ea01ad0ee984209779baaec3ced90fa3f408719526f8d77f4943"
+    XPRV_HEADER_ALT = 0x0436ef7d
+    XPUB_HEADER_ALT = 0x0436f6e1
+    HEADERS_URL = "https://electrum-ltc.org/testnet_headers"
+    GENESIS = "4966625a4b2851d9fdee139e56211a0d88575f59ed816ff5e6a63deb4e3e29a0"
 
 def set_nolnet():
     global ADDRTYPE_P2PKH, ADDRTYPE_P2SH, ADDRTYPE_P2WPKH
@@ -79,8 +85,10 @@ def set_nolnet():
 
 ################################## transactions
 
-FEE_STEP = 10000
-MAX_FEE_RATE = 300000
+DUST_SOFT_LIMIT = 100000
+MIN_RELAY_TX_FEE = 100000
+FEE_STEP = 100000
+MAX_FEE_RATE = 1000000
 FEE_TARGETS = [25, 10, 5, 2]
 
 COINBASE_MATURITY = 100
@@ -436,7 +444,7 @@ def is_address(addr):
         addrtype, h = bc_address_to_hash_160(addr)
     except Exception:
         return False
-    if addrtype not in [ADDRTYPE_P2PKH, ADDRTYPE_P2SH]:
+    if addrtype not in [ADDRTYPE_P2PKH, ADDRTYPE_P2SH, ADDRTYPE_P2SH_ALT]:
         return False
     return addr == hash_160_to_bc_address(h, addrtype)
 
@@ -448,7 +456,7 @@ def is_p2pkh(addr):
 def is_p2sh(addr):
     if is_address(addr):
         addrtype, h = bc_address_to_hash_160(addr)
-        return addrtype == ADDRTYPE_P2SH
+        return addrtype in [ADDRTYPE_P2SH, ADDRTYPE_P2SH_ALT]
 
 def is_private_key(key):
     try:
@@ -481,7 +489,7 @@ from ecdsa.util import string_to_number, number_to_string
 def msg_magic(message):
     varint = var_int(len(message))
     encoded_varint = "".join([chr(int(varint[i:i+2], 16)) for i in xrange(0, len(varint), 2)])
-    return "\x18Bitcoin Signed Message:\n" + encoded_varint + message
+    return "\x19Litecoin Signed Message:\n" + encoded_varint + message
 
 
 def verify_message(address, sig, message):

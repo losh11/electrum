@@ -59,8 +59,8 @@ mv PyInstaller-2.1 $WINEPREFIX/drive_c/pyinstaller
 $PYTHON -m pip install pycryptodomex
 
 # Install setuptools
-wget -O setuptools.exe "$SETUPTOOLS_URL"
-wine setuptools.exe
+#wget -O setuptools.exe "$SETUPTOOLS_URL"
+#wine setuptools.exe
 
 # Install NSIS installer
 wget -q -O nsis.exe "$NSIS_URL"
@@ -74,3 +74,20 @@ wine nsis.exe
 # add dlls needed for pyinstaller:
 cp $WINEPREFIX/drive_c/windows/system32/msvcp90.dll $WINEPREFIX/drive_c/Python27/
 cp $WINEPREFIX/drive_c/windows/system32/msvcm90.dll $WINEPREFIX/drive_c/Python27/
+
+
+# Install MinGW
+wget http://downloads.sourceforge.net/project/mingw/Installer/mingw-get-setup.exe
+wine mingw-get-setup.exe
+
+echo "add c:\MinGW\bin to PATH using regedit"
+echo "HKEY_LOCAL_MACHINE\SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+regedit
+
+wine mingw-get install gcc
+wine mingw-get install mingw-utils
+wine mingw-get install mingw32-libz
+
+printf "[build]\ncompiler=mingw32\n" > $WINEPREFIX/drive_c/Python27/Lib/distutils/distutils.cfg
+
+wine "$PYHOME\\Scripts\\pip.exe" install ltc_scrypt

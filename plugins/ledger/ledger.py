@@ -5,15 +5,15 @@ import time
 import sys
 import traceback
 
-import electrum
-from electrum import bitcoin
-from electrum.bitcoin import TYPE_ADDRESS, int_to_hex, var_int
-from electrum.i18n import _
-from electrum.plugins import BasePlugin, hook
-from electrum.keystore import Hardware_KeyStore, parse_xpubkey
-from electrum.transaction import push_script, Transaction
+import electrum_ltc as electrum
+from electrum_ltc import bitcoin
+from electrum_ltc.bitcoin import TYPE_ADDRESS, int_to_hex, var_int, ADDRTYPE_P2PKH, ADDRTYPE_P2SH
+from electrum_ltc.i18n import _
+from electrum_ltc.plugins import BasePlugin, hook
+from electrum_ltc.keystore import Hardware_KeyStore, parse_xpubkey
+from electrum_ltc.transaction import push_script, Transaction
 from ..hw_wallet import HW_PluginBase
-from electrum.util import format_satoshis_plain, print_error, is_verbose
+from electrum_ltc.util import format_satoshis_plain, print_error, is_verbose
 
 try:
     import hid
@@ -136,6 +136,7 @@ class Ledger_Client():
                     raise Exception('Aborted by user - please unplug the dongle and plug it again before retrying')
                 pin = pin.encode()
                 self.dongleObject.verifyPin(pin)
+                self.dongleObject.setAlternateCoinVersions(ADDRTYPE_P2PKH, ADDRTYPE_P2SH)
         except BTChipException, e:
             if (e.sw == 0x6faa):
                 raise Exception("Dongle is temporarily locked - please unplug it and replug it again")
@@ -480,7 +481,7 @@ class LedgerPlugin(HW_PluginBase):
         #client.handler = wizard
         client.handler = self.create_handler(wizard)
         #client.get_xpub('m')
-        client.get_xpub("m/44'/0'") # TODO replace by direct derivation once Nano S > 1.1
+        client.get_xpub("m/44'/2'") # TODO replace by direct derivation once Nano S > 1.1
 
     def get_xpub(self, device_id, derivation, wizard):
         devmgr = self.device_manager()
